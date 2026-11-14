@@ -1,0 +1,1129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Cup Balls</title>
+<style>
+  :root {
+    --ink: var(--foreground, #14151a);
+    --muted: var(--muted-foreground, #6d707a);
+    --faint: var(--muted-foreground, #8b8e98);
+    --line: rgba(24, 24, 60, .09);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    color: var(--ink);
+    font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { width: 100%; max-width: 560px; margin: 0 auto; }
+  /* opened directly (not embedded): own page background, centred, sized to fit the window */
+  .standalone { color-scheme: light; --ink: #14151a; --muted: #6d707a; --faint: #8b8e98; }
+  .standalone, .standalone body { background: #fcfcfe; }
+  .standalone body { display: grid; place-items: center; min-height: var(--vh, 0px); padding: 20px 16px 28px; }
+  .standalone .wrap { max-width: min(560px, max(280px, var(--vh, 900px) - 250px)); }
+  .card {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 28px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, #e9ebfa 0%, #f3f4fc 45%, #fbfbfe 100%);
+    box-shadow: 0 1px 2px rgba(30, 30, 80, .05), 0 18px 44px -22px rgba(60, 60, 130, .28);
+  }
+  canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    display: block; touch-action: none; cursor: grab; outline: none;
+  }
+  canvas.dragging { cursor: grabbing; }
+  .zoom {
+    position: absolute; right: 18px; bottom: 18px;
+    display: grid; width: 52px;
+    background: #fff; border-radius: 15px; overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(24, 24, 60, .06), 0 8px 22px -8px rgba(40, 40, 100, .3);
+  }
+  .zoom button {
+    height: 52px; border: 0; background: transparent; color: #14151a;
+    font-family: inherit; font-size: 27px; font-weight: 400; line-height: 1; cursor: pointer; display: grid; place-items: center;
+  }
+  .zoom button + button { border-top: 1px solid rgba(24, 24, 60, .08); }
+  .zoom button:hover { background: #f5f5fa; }
+  .zoom button:active { background: #ececf4; }
+  .zoom button:focus-visible, input[type=range]:focus-visible { outline: 2px solid #5b6cff; outline-offset: -2px; }
+  .head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+    margin: 26px 0 16px;
+  }
+  .head h1 { margin: 0; font-size: 21px; font-weight: 650; letter-spacing: -.012em; }
+  .head div { font-size: 19px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    display: block; width: 100%; height: 30px; margin: 0; background: transparent; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 9px; border-radius: 9px;
+    background: linear-gradient(90deg, #cfa98a, #e3c9a0 22%, #ecdfa9 36%, #e7e4e0 48%, #d3d6e4 62%, #b9d9f0 78%, #f0bfc6 90%, #b7e3c8);
+  }
+  input[type=range]::-moz-range-track {
+    height: 9px; border-radius: 9px;
+    background: linear-gradient(90deg, #cfa98a, #e3c9a0 22%, #ecdfa9 36%, #e7e4e0 48%, #d3d6e4 62%, #b9d9f0 78%, #f0bfc6 90%, #b7e3c8);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 30px; height: 30px; margin-top: -10.5px; border-radius: 50%; background: #fff;
+    border: 1px solid rgba(24, 24, 60, .1);
+    box-shadow: 0 3px 8px rgba(40, 40, 90, .22), 0 1px 2px rgba(40, 40, 90, .14);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 29px; height: 29px; border-radius: 50%; background: #fff;
+    border: 1px solid rgba(24, 24, 60, .1);
+    box-shadow: 0 3px 8px rgba(40, 40, 90, .22), 0 1px 2px rgba(40, 40, 90, .14);
+  }
+  .ticks { position: relative; height: 22px; margin-top: 8px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .ticks span:first-child { left: 0; transform: none; }
+  .ticks span:last-child { left: auto; right: 0; transform: none; }
+  .fact { margin: 14px 0 0; min-height: 2.9em; font-size: 14px; line-height: 1.45; color: var(--faint); text-wrap: pretty; }
+  .err { position: absolute; inset: 0; margin: 0; padding: 20px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: #7a1f2b; white-space: pre-wrap; overflow: auto; }
+  body.grid { display: block; padding: 0; }
+  body.grid .wrap { width: auto; }
+  body.grid .card { position: fixed; inset: 0; aspect-ratio: auto; border-radius: 0; border: 0; }
+  body.grid .zoom, body.grid .head, body.grid input, body.grid .ticks, body.grid .fact { display: none; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="card">
+    <canvas id="gl" tabindex="0" aria-label="3D football. Drag to rotate, scroll to zoom."></canvas>
+    <div class="zoom">
+      <button id="zin" type="button" aria-label="Zoom in">+</button>
+      <button id="zout" type="button" aria-label="Zoom out">&minus;</button>
+    </div>
+  </div>
+  <div class="head">
+    <h1 id="name">Telstar</h1>
+    <div id="where">Mexico 1970</div>
+  </div>
+  <input id="year" type="range" min="0" max="23" step="0.001" value="9" aria-label="World Cup">
+  <div class="ticks" id="ticks"><span>1930</span><span id="midtick">1978</span><span>2026</span></div>
+  <p class="fact" id="fact"></p>
+</main>
+
+<script>
+/* ------------------------------------------------------------------ data */
+const S3 = 0.57735;
+const BALLS = [
+  { y: 1930, host: 'Uruguay', name: 'Tiento', style: 'stamp', dc: [1, 0, .4142], du: [0, 0, 1], ds: .155, ink: [.13, .06, .02], op: .8, hero: [.70, .14, .70],
+    fact: '12 panels of hand-laced leather. Argentina’s ball, used for the first half of the first final.' },
+  { y: 1930, host: 'Uruguay', name: 'T-Model', style: 'stamp', dc: [1, 0, .5774], du: [0, 0, 1], ds: .125, ink: [.15, .07, .02], op: .8, hero: [.66, .30, .69],
+    fact: '12 T-shaped panels, laced. Uruguay’s larger, heavier ball, used for the second half. They came back to win 4–2.' },
+  { y: 1934, host: 'Italy', name: 'Federale 102', style: 'stamp', dc: [1, 0, .4142], du: [0, 0, 1], ds: .155, ink: [.12, .06, .02], op: .8, hero: [.68, .22, .70],
+    fact: '13 panels, made by ECAS in Rome. Cotton laces replaced leather ones, which made heading less painful.' },
+  { y: 1938, host: 'France', name: 'Allen', style: 'stamp', dc: [1, 0, .4142], du: [0, 0, 1], ds: .155, ink: [.10, .04, .02], op: .8, hero: [.70, .14, .70],
+    fact: '13 leather panels by Allen of Paris, with white cotton laces set on their own thin panel.' },
+  { y: 1950, host: 'Brazil', name: 'Duplo T', style: 'stamp', dc: [1, 0, .5774], du: [0, 0, 1], ds: .125, ink: [.20, .10, .03], op: .78, hero: [.86, .22, .46],
+    fact: '12 panels. The “Superball” was the first World Cup ball with no laces, inflated through a syringe valve.' },
+  { y: 1954, host: 'Switzerland', name: 'Swiss World Champion', style: 'stamp', dc: [1, 0, 0], du: [0, 0, 1], ds: .135, ink: [.22, .11, .02], op: .78, hero: [.84, .25, .48],
+    fact: '18 panels by Kost Sport of Basel. The first 18-panel ball, its strips locked together with zig-zag ends.' },
+  { y: 1958, host: 'Sweden', name: 'Top Star', style: 'stamp', dc: [1, 0, .1989], du: [0, 0, 1], ds: .10, ink: [.20, .10, .03], op: .78, hero: [.84, .25, .48],
+    fact: '24 panels, made in Ängelholm. FIFA officials picked it in a blind test of 102 unmarked balls.' },
+  { y: 1962, host: 'Chile', name: 'Crack', style: 'stamp', dc: [1, 0, 0], du: [0, 0, 1], ds: .135, ink: [.22, .11, .02], op: .78, hero: [.84, .25, .48],
+    fact: '18 irregular panels, made in Chile. Unpopular with European sides, who often swapped in the Top Star.' },
+  { y: 1966, host: 'England', name: 'Challenge 4-Star', style: 'stamp', dc: [1, 0, .1989], du: [0, 0, 1], ds: .10, ink: [.18, .05, .01], op: .8, hero: [.84, .25, .48],
+    fact: '25 panels by Slazenger, chosen in a blind test and produced in orange, yellow and white.' },
+  { y: 1970, host: 'Mexico', name: 'Telstar', style: 'retro', dc: [S3, S3, S3], du: [0, 1, 0], ds: .16, ink: [.74, .56, .22], op: .95, metal: 1, hero: [.42, .50, .75],
+    fact: '32 panels. Twelve black pentagons and twenty white hexagons, designed to read clearly on black-and-white television.' },
+  { y: 1974, host: 'West Germany', name: 'Telstar Durlast', style: 'retro', dc: [S3, S3, S3], du: [0, 1, 0], ds: .16, ink: [.06, .06, .07], op: .95, hero: [.42, .50, .75],
+    fact: '32 panels. The same design under a glossy polyurethane Durlast coat that kept water and scuffs out.' },
+  { y: 1978, host: 'Argentina', name: 'Tango', style: 'retro', dc: [0, .5257, .8507], du: [0, 1, 0], ds: .135, ink: [.06, .06, .07], op: .95, hero: [.30, .42, .86],
+    fact: '32 panels. Twenty printed “triads” create the illusion of twelve circles. The look lasted five World Cups.' },
+  { y: 1982, host: 'Spain', name: 'Tango España', style: 'retro', dc: [0, .5257, .8507], du: [0, 1, 0], ds: .135, ink: [.06, .06, .07], op: .95, hero: [.30, .42, .86],
+    fact: '32 panels with rubberised, water-resistant seams. The last genuine leather ball used at a World Cup.' },
+  { y: 1986, host: 'Mexico', name: 'Azteca', style: 'retro', dc: [0, .5257, .8507], du: [0, 1, 0], ds: .135, ink: [.06, .06, .07], op: .95, hero: [.30, .42, .86],
+    fact: '32 panels. The first fully synthetic World Cup ball, its triads filled with Aztec-inspired murals.' },
+  { y: 1990, host: 'Italy', name: 'Etrusco Unico', style: 'retro', dc: [0, .5257, .8507], du: [0, 1, 0], ds: .135, ink: [.06, .06, .07], op: .95, hero: [.30, .42, .86],
+    fact: '32 panels. Three Etruscan lion heads sit in each of the twenty triads.' },
+  { y: 1994, host: 'USA', name: 'Questra', style: 'retro', dc: [0, .5257, .8507], du: [0, 1, 0], ds: .135, ink: [.06, .06, .07], op: .95, hero: [.30, .42, .86],
+    fact: '32 panels. Space-age triads for “the quest for the stars”, over a layer of energy-returning foam.' },
+  { y: 1998, host: 'France', name: 'Tricolore', style: 'retro', dc: [0, .5257, .8507], du: [0, 1, 0], ds: .135, ink: [.05, .12, .42], op: .95, hero: [.30, .42, .86],
+    fact: '32 panels. The first multi-coloured World Cup ball: French blue, white and red, with stylised roosters.' },
+  { y: 2002, host: 'Korea / Japan', name: 'Fevernova', style: 'modern', dc: [1, 0, 0], du: [0, 1, 0], ds: .12, ink: [.45, .36, .14], op: .95, metal: 1, hero: [.80, .42, .43],
+    fact: '32 panels. Broke from the Tango look with gold shuriken-like trigons tipped by red flames.' },
+  { y: 2006, host: 'Germany', name: 'Teamgeist', style: 'modern', dc: [1, 0, 0], du: [0, 0, 1], ds: .095, ink: [.06, .06, .07], op: .95, hero: [.93, .22, .28],
+    fact: '14 panels. Thermally bonded “propellers” and “turbines” gave it fewer seams and a rounder flight.' },
+  { y: 2010, host: 'South Africa', name: 'Jabulani', style: 'modern', dc: [S3, S3, S3], du: [0, 1, 0], ds: .10, ink: [.06, .06, .07], op: .95, hero: [.45, .52, .73],
+    fact: '8 spherically moulded panels with “Grip’n’Groove” ridges and eleven colours, one for each player.' },
+  { y: 2014, host: 'Brazil', name: 'Brazuca', style: 'modern', dc: [1, 0, 0], du: [0, 1, 0], ds: .12, ink: [.03, .06, .25], op: .95, hero: [.92, .24, .30],
+    fact: '6 identical propeller-shaped panels, thermally bonded, wrapped in ribbons of blue, orange and green.' },
+  { y: 2018, host: 'Russia', name: 'Telstar 18', style: 'modern', dc: [.82, .40, -.40], du: [0, 1, 0], ds: .11, ink: [.70, .55, .24], op: .95, metal: 1, hero: [.90, .36, .06],
+    fact: '6 panels. A pixelated homage to the 1970 original, with an NFC chip embedded inside.' },
+  { y: 2022, host: 'Qatar', name: 'Al Rihla', style: 'modern', dc: [.7071, .7071, 0], du: [0, 0, 1], ds: .085, ink: [.05, .08, .30], op: .95, hero: [.72, .50, .48],
+    fact: '20 panels. “The journey” in Arabic, with a textured Speedshell skin and a motion sensor at its core.' },
+  { y: 2026, host: 'Canada / Mexico / USA', name: 'Trionda', style: 'modern', dc: [S3, S3, S3], du: [0, 1, 0], ds: .12, ink: [.06, .06, .07], op: .95, hero: [.86, .40, .30],
+    fact: '4 panels. Three waves of red, green and blue for the three hosts, carrying a maple leaf, an eagle and a star.' },
+];
+
+/* ---------------------------------------------------------------- shader */
+const VERT = `#version 300 es
+in vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0., 1.); }`;
+
+const FRAG = `#version 300 es
+precision highp float;
+precision highp int;
+uniform vec2 uRes, uOff;
+uniform mat3 uRot;
+uniform float uZoom, uMix;
+uniform int uA, uB;
+uniform sampler2D uAtlas;
+uniform vec3 uDc[2], uDu[2], uInk[2];
+uniform vec4 uDp[2];
+out vec4 outColor;
+
+const float PI = 3.14159265359;
+float gPx = .003;
+float gNV = 1.;
+float gOcc = 1.;
+float gMicro = 1.;
+
+const vec3 ICO[12] = vec3[12](
+  vec3(0.,.525731,.850651), vec3(0.,-.525731,.850651), vec3(0.,.525731,-.850651), vec3(0.,-.525731,-.850651),
+  vec3(.525731,.850651,0.), vec3(-.525731,.850651,0.), vec3(.525731,-.850651,0.), vec3(-.525731,-.850651,0.),
+  vec3(.850651,0.,.525731), vec3(.850651,0.,-.525731), vec3(-.850651,0.,.525731), vec3(-.850651,0.,-.525731));
+const vec3 DOD[20] = vec3[20](
+  vec3(.356822,0.,.934172), vec3(-.356822,0.,.934172), vec3(.356822,0.,-.934172), vec3(-.356822,0.,-.934172),
+  vec3(.934172,.356822,0.), vec3(-.934172,.356822,0.), vec3(.934172,-.356822,0.), vec3(-.934172,-.356822,0.),
+  vec3(0.,.934172,.356822), vec3(0.,-.934172,.356822), vec3(0.,.934172,-.356822), vec3(0.,-.934172,-.356822),
+  vec3(.57735,.57735,.57735), vec3(-.57735,.57735,.57735), vec3(.57735,-.57735,.57735), vec3(.57735,.57735,-.57735),
+  vec3(-.57735,-.57735,.57735), vec3(-.57735,.57735,-.57735), vec3(.57735,-.57735,-.57735), vec3(-.57735,-.57735,-.57735));
+const vec3 T4[4] = vec3[4](
+  vec3(.57735,.57735,.57735), vec3(.57735,-.57735,-.57735), vec3(-.57735,.57735,-.57735), vec3(-.57735,-.57735,.57735));
+
+float sq(float x){ return x*x; }
+vec3 sc(float r, float g, float b){ return pow(vec3(r,g,b), vec3(2.2)); }
+float S(float x){ return smoothstep(-gPx, gPx, x); }
+float band(float x, float a, float b){ return S(x-a)*S(b-x); }
+float hash(vec3 p){ p = fract(p*.3183099 + vec3(.1,.2,.3)); p *= 17.; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float vnoise(vec3 x){
+  vec3 i = floor(x), f = fract(x); f = f*f*(3.-2.*f);
+  return mix(mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x), mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+             mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x), mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+}
+float fbm(vec3 p){ float a = .5, s = 0.; for(int i=0;i<4;i++){ s += a*vnoise(p); p = p*2.03 + 7.1; a *= .5; } return s; }
+float sacos(float x){ return acos(clamp(x, -1., 1.)); }
+float sdBox(vec2 q, vec2 h){ vec2 d = abs(q)-h; return length(max(d,0.)) + min(max(d.x,d.y),0.); }
+
+/* ---- shared geometry helpers ---- */
+vec3 tetraNear(vec3 p, out float b1, out float b2){
+  b1 = -2.; b2 = -2.; vec3 c = T4[0];
+  for(int i=0;i<4;i++){ float a = dot(p,T4[i]); if(a>b1){ b2=b1; b1=a; c=T4[i]; } else if(a>b2){ b2=a; } }
+  return c;
+}
+// polar coords around a 3-fold axis c (any of the 8 cube-corner directions)
+vec2 polar3(vec3 p, vec3 c){
+  vec3 a = vec3(c.x<0.?-1.:1., 0., 0.);
+  vec3 e1 = normalize(a - c*dot(a,c)); vec3 e2 = cross(c,e1);
+  return vec2(sacos(dot(p,c)), atan(dot(p,e2), dot(p,e1)));
+}
+
+/* ---- 1930-1966: stitched leather on a cube layout ---- */
+vec2 cubeUV(vec3 p, out float f, out float sg){
+  vec3 a = abs(p); vec3 q;
+  if(a.x>=a.y && a.x>=a.z){ q = p.yzx; f = 0.; } else if(a.y>=a.z){ q = p.zxy; f = 1.; } else { q = p.xyz; f = 2.; }
+  sg = q.z<0. ? -1. : 1.;
+  return atan(q.xy/abs(q.z))*(4./PI);
+}
+struct LS { float d; float pid; float lace; float slit; };
+LS leather(int id, vec3 p){
+  LS r; float f, sg; vec2 uv = cubeUV(p, f, sg);
+  float au = abs(uv.x), av = abs(uv.y);
+  r.lace = 9.; r.slit = 9.; r.pid = f*2. + sg;
+  bool top = (f==2. && sg>0.);
+  const float w = 1./3.;
+  float d;
+  if(id==1 || id==4){                       // T-shaped panels: bar + half a neighbour's centre strip
+    d = abs(av-w);
+    if(av<w){ d = min(d, au); d = min(d, length(vec2(1.-au, w-av))); } else d = min(d, 1.-au);
+    d = min(d, au>w ? 1.-av : length(vec2(w-au, 1.-av)));
+    r.pid = 0.;
+  } else if(id==5){                         // 18 panels, zig-zag strip ends
+    float z = .11*abs(fract(uv.y*3.)-.5)*2.*smoothstep(1.,.80,av);
+    float zu = .11*abs(fract(uv.x*3.)-.5)*2.*smoothstep(1.,.80,au);
+    d = min(abs(1.-au-z)*.83, (1.-av)+zu);
+    d = min(d, abs(av-w));
+    r.pid += floor((uv.y+1.)*1.5)*13.;
+  } else if(id==7){                         // 18 irregular panels: long hexagon flanked by two wedges
+    float e = .54 - .32*au;
+    d = min(abs(av-e)*.95, min(1.-au, 1.-av));
+    r.pid += (av<e ? 0. : (uv.y<0.?-1.:1.))*13.;
+  } else {
+    float n = (id==6 || id==8) ? 4. : 2.;
+    float t = (uv.y+1.)*n*.5;
+    d = min(abs(fract(t+.5)-.5)*2./n, min(1.-au, 1.-av));
+    r.pid += floor(t)*13.;
+    if(id==3 && top){ d = min(min(1.-au, 1.-av), abs(av-.085)); r.pid = av<.085 ? 99. : r.pid; }
+    if(id==2 && top){ float b = sdBox(uv-vec2(0.,.5), vec2(.52,.14)); d = min(d, abs(b)); if(b<0.) r.pid = 99.; }
+    if(id==8 && top && uv.y>0. && uv.y<.5){ d = min(d, abs(au-.2)); if(au<.2) r.pid = 99.; }
+  }
+  r.d = d*(PI/4.);
+  if(id<=3 && top){
+    vec2 q = uv - (id==1 ? vec2(0.,2./3.) : id==2 ? vec2(0.,.5) : vec2(0.));
+    const float n = 3., sp = .105, span = .078;
+    r.slit = length(vec2(max(abs(q.x)-n*sp-.03, 0.), q.y))*(PI/4.);
+    float k = clamp(floor(q.x/sp+.5), -n, n);
+    r.lace = length(vec2(q.x-k*sp, max(abs(q.y)-span, 0.)))*(PI/4.);
+  }
+  return r;
+}
+float Hleather(int id, vec3 p){
+  LS s = leather(id, p);
+  float h = -.011*exp(-sq(s.d/.010)) - .021*exp(-s.d/.075);
+  h += .0019*(fbm(p*70.)-.5) + .0008*gMicro*(vnoise(p*210.)-.5);
+  const float lt = .016;
+  h += .015*sqrt(max(0., 1.-sq(s.lace/lt)));
+  h -= .007*exp(-sq(s.slit/.007))*step(lt, s.lace);
+  return h;
+}
+
+/* ---- 1970-2002: truncated icosahedron ---- */
+struct Ico { float d; float pent; vec3 v1; vec3 v2; vec3 v3; float a1; float a2; float a3; };
+Ico ico(vec3 p){
+  Ico r; r.a1 = -2.; r.a2 = -2.; r.a3 = -2.; r.v1 = ICO[0]; r.v2 = ICO[0]; r.v3 = ICO[0];
+  for(int i=0;i<12;i++){
+    float a = dot(p,ICO[i]);
+    if(a>r.a1){ r.a3=r.a2; r.v3=r.v2; r.a2=r.a1; r.v2=r.v1; r.a1=a; r.v1=ICO[i]; }
+    else if(a>r.a2){ r.a3=r.a2; r.v3=r.v2; r.a2=a; r.v2=ICO[i]; }
+    else if(a>r.a3){ r.a3=a; r.v3=ICO[i]; }
+  }
+  float b1 = -2., b2 = -2.; vec3 m1 = DOD[0], m2 = DOD[0];
+  for(int i=0;i<20;i++){
+    float a = dot(p,DOD[i]);
+    if(a>b1){ b2=b1; m2=m1; b1=a; m1=DOD[i]; } else if(a>b2){ b2=a; m2=DOD[i]; }
+  }
+  const float W = .97418;
+  float p1 = r.a1*W;
+  if(p1>b1){ r.pent = 1.; r.d = (p1-b1)/length(r.v1*W-m1); }
+  else { r.pent = 0.; r.d = p1>b2 ? (b1-p1)/length(m1-r.v1*W) : (b1-b2)/length(m1-m2); }
+  return r;
+}
+float Htico(int id, vec3 p){
+  Ico k = ico(p);
+  float h = -.010*exp(-sq(k.d/.010)) - .013*exp(-k.d/.055);
+  h += (id<=10 ? .0006 : .00025)*(fbm(p*90.)-.5);
+  return h;
+}
+
+/* ---- 2006: Teamgeist ---- */
+const float TG_C = .775, TG_R = .548, TG_W = .235;
+float propSD(vec3 f){
+  float dl = sacos(dot(vec3(f.x,abs(f.y),f.z), vec3(cos(TG_C),sin(TG_C),0.))) - TG_R;
+  float a = atan(abs(f.y), f.x);
+  float db = a<TG_C ? abs(asin(clamp(f.z,-1.,1.))) - TG_W : 9.;
+  const float k = .09;
+  float hh = clamp(.5+.5*(db-dl)/k, 0., 1.);
+  return mix(db, dl, hh) - k*hh*(1.-hh);
+}
+float teamSD(vec3 p, out vec3 fb){
+  vec3 fx = vec3(abs(p.x),p.y,p.z), fy = vec3(abs(p.y),p.z,p.x), fz = vec3(abs(p.z),p.x,p.y);
+  float sx = propSD(fx), sy = propSD(fy), sz = propSD(fz);
+  float s = sx; fb = fx;
+  if(sy<s){ s = sy; fb = fy; }
+  if(sz<s){ s = sz; fb = fz; }
+  return s;
+}
+float Hteam(vec3 p){
+  vec3 fb; float d = abs(teamSD(p, fb));
+  return -.007*exp(-sq(d/.008)) - .004*exp(-d/.045) + .0003*(vnoise(p*160.)-.5);
+}
+
+/* ---- 2010: Jabulani ---- */
+float jabSeam(vec3 p){
+  float b1, b2; vec3 c = -tetraNear(-p, b1, b2);
+  vec2 pl = polar3(p, c);
+  float f = pl.x*(1.+.15*cos(3.*pl.y));
+  float t1, t2; tetraNear(p, t1, t2);
+  float d = abs(f-.56)/1.1;
+  if(f>.56) d = min(d, (t1-t2)/1.633);
+  return d;
+}
+float Hjab(vec3 p){
+  float d = jabSeam(p);
+  float h = -.007*exp(-sq(d/.008)) - .004*exp(-d/.045);
+  float b1, b2; vec3 t = tetraNear(p, b1, b2);
+  float r = sacos(b1);
+  for(int i=0;i<3;i++){ h -= .0022*exp(-sq((r-(.58+.034*float(i)))/.005)); }
+  h += .0005*gMicro*sin(p.x*260.)*sin(p.y*260.)*sin(p.z*260.);
+  return h;
+}
+
+/* ---- 2014 / 2018: six pinwheel panels on a cube ---- */
+struct CW { float d; float arm; float along; float ax; vec2 uv; };
+float Wf(float t, float A, float A3){ return A*sin(5.4414*t) + A3*sin(16.3242*t); }
+float Wd(float t, float A, float A3){ return 5.4414*A*cos(5.4414*t) + 16.3242*A3*cos(16.3242*t); }
+CW cubeWave(vec3 p, float A, float A3){
+  vec3 a = abs(p), s = vec3(p.x<0.?-1.:1., p.y<0.?-1.:1., p.z<0.?-1.:1.);
+  float txy = s.x*s.y*p.z, tyz = s.y*s.z*p.x, tzx = s.z*s.x*p.y;
+  float gxy = a.x-a.y-Wf(txy,A,A3), gyz = a.y-a.z-Wf(tyz,A,A3), gzx = a.z-a.x-Wf(tzx,A,A3);
+  int w;
+  if(gxy>0. && gzx<0.) w = 0; else if(gyz>0. && gxy<0.) w = 1; else if(gzx>0. && gyz<0.) w = 2;
+  else w = (a.x>=a.y && a.x>=a.z) ? 0 : (a.y>=a.z ? 1 : 2);
+  float g1, t1, ax1, g2, t2, ax2;
+  if(w==0){ g1=gxy; t1=txy; ax1=2.; g2=gzx; t2=tzx; ax2=1.; }
+  else if(w==1){ g1=gyz; t1=tyz; ax1=0.; g2=gxy; t2=txy; ax2=2.; }
+  else { g1=gzx; t1=tzx; ax1=1.; g2=gyz; t2=tyz; ax2=0.; }
+  float d1 = abs(g1)/sqrt(2.+sq(Wd(t1,A,A3))), d2 = abs(g2)/sqrt(2.+sq(Wd(t2,A,A3)));
+  CW r;
+  if(d1<d2){ r.d = d1; r.along = t1; r.arm = -Wf(t1,A,A3)/A; r.ax = ax1; }
+  else { r.d = d2; r.along = t2; r.arm = Wf(t2,A,A3)/A; r.ax = ax2; }
+  vec3 q = w==0 ? p.yzx : (w==1 ? p.zxy : p.xyz);
+  r.uv = q.xy/max(abs(q.z), .2);
+  return r;
+}
+float Hcube(int id, vec3 p){
+  CW w = cubeWave(p, id==20 ? .40 : .24, id==20 ? 0. : .07);
+  float h = -.010*exp(-sq(w.d/.010)) - .006*exp(-w.d/.045);
+  h += (id==20 ? .0006 : .0004)*gMicro*sin(p.x*230.)*sin(p.y*230.)*sin(p.z*230.);
+  return h;
+}
+
+/* ---- 2022: Al Rihla, 8 triangles + 12 kites ---- */
+struct RH { float d; float tri; vec3 c; };
+RH rihla(vec3 p){
+  vec3 a = abs(p); float sum = a.x+a.y+a.z;
+  float mn = min(a.x,min(a.y,a.z)), mx = max(a.x,max(a.y,a.z)), md = sum-mn-mx;
+  const float w = .93;
+  float s8 = sum*.57735, k1 = (sum-mn)*.70711*w, k2 = (sum-md)*.70711*w;
+  RH r;
+  if(s8>k1){ r.tri = 1.; r.d = (s8-k1)/.588; }
+  else { r.tri = 0.; r.d = s8>k2 ? (k1-s8)/.588 : (k1-k2)/.93; }
+  r.c = vec3(p.x<0.?-.57735:.57735, p.y<0.?-.57735:.57735, p.z<0.?-.57735:.57735);
+  return r;
+}
+float Hrihla(vec3 p){
+  RH r = rihla(p);
+  float h = -.008*exp(-sq(r.d/.009)) - .004*exp(-r.d/.04);
+  float l1 = abs(fract(dot(p,vec3(.80,.53,.28))*34.)-.5), l2 = abs(fract(dot(p,vec3(-.31,.62,.72))*34.)-.5);
+  h -= .0010*gMicro*(exp(-sq(l1/.07)) + exp(-sq(l2/.07)));
+  return h;
+}
+
+/* ---- 2026: Trionda, four wave-edged panels ---- */
+struct TW { float d; float arm; float along; int ci; };
+const float TK = 4.081, TA = .55;
+float tG(vec3 p, vec3 a, vec3 b){ return dot(p,a-b) - TA*sin(TK*dot(p,cross(a,b))); }
+TW tri4(vec3 p){
+  int w = -1;
+  for(int i=0;i<4;i++){
+    bool ok = true;
+    for(int j=0;j<4;j++){ if(j!=i && tG(p,T4[i],T4[j])<=0.) ok = false; }
+    if(ok) w = i;
+  }
+  if(w<0){ float b = -2.; for(int i=0;i<4;i++){ float a = dot(p,T4[i]); if(a>b){ b=a; w=i; } } }
+  TW r; r.d = 9.; r.arm = 0.; r.along = 0.; r.ci = 1;
+  for(int j=0;j<4;j++){
+    if(j==w) continue;
+    float t = dot(p, cross(T4[w],T4[j]));
+    float dd = abs(tG(p,T4[w],T4[j]))/sqrt(2.667+sq(TA*TK*cos(TK*t)*.943));
+    if(dd<r.d){ r.d = dd; r.along = t; r.arm = -sin(TK*t); r.ci = w^j; }
+  }
+  return r;
+}
+float Htri(vec3 p){
+  TW w = tri4(p);
+  float h = -.012*exp(-sq(w.d/.011)) - .006*exp(-w.d/.05);
+  float arm = smoothstep(-.15,.75,w.arm);
+  float inb = smoothstep(.30*arm, .30*arm-.02, w.d);
+  h -= .0012*gMicro*inb*(.5+.5*sin(w.d*200.));
+  h += .0004*gMicro*sin(p.x*240.)*sin(p.y*240.)*sin(p.z*240.);
+  return h;
+}
+
+float H(int id, vec3 p){
+  if(id<=8) return Hleather(id,p);
+  if(id<=17) return Htico(id,p);
+  if(id==18) return Hteam(p);
+  if(id==19) return Hjab(p);
+  if(id<=21) return Hcube(id,p);
+  if(id==22) return Hrihla(p);
+  return Htri(p);
+}
+
+/* ------------------------------------------------------------ materials */
+struct M { vec3 col; vec3 n; float rough; float coat; float metal; float occ; float cr; };
+
+float atlas(vec2 uv, float cell, float sizeRad){
+  vec2 c = vec2(mod(cell,4.), floor(cell/4.));
+  vec2 st = (c + clamp(uv, .01, .99))/vec2(4.,7.);
+  float lod = log2(max(gPx*256./(2.*sizeRad), 1.));
+  float inside = step(0.,uv.x)*step(uv.x,1.)*step(0.,uv.y)*step(uv.y,1.);
+  return textureLod(uAtlas, st, lod).a*inside;
+}
+float decal(vec3 p, vec3 c, vec3 up, float size, float cell){
+  vec3 r = normalize(cross(up,c)); vec3 u = cross(c,r);
+  float z = dot(p,c);
+  if(z<.35) return 0.;
+  vec2 q = vec2(dot(p,r), dot(p,u))/z;
+  vec2 uv = vec2(q.x/(4.*size), -q.y/(2.*size)) + .5;
+  return atlas(uv, cell, size);
+}
+
+void Cleather(int id, vec3 p, inout M m){
+  LS s = leather(id, p);
+  vec3 base = id==0 ? sc(.40,.22,.11) : id==1 ? sc(.52,.31,.15) : id==2 ? sc(.45,.26,.13) : id==3 ? sc(.40,.18,.10)
+            : id==4 ? sc(.68,.47,.25) : id==5 ? sc(.87,.62,.14) : id==6 ? sc(.78,.60,.36) : id==7 ? sc(.84,.64,.22) : sc(.83,.36,.09);
+  float clean = id>=5 ? .45 : 1.;
+  float mt = fbm(p*2.6 + s.pid), m2 = fbm(p*11. + 3.);
+  vec3 col = base*(1. + clean*(mt-.5)*.75)*(.93 + .14*hash(vec3(s.pid,1.7,2.3)));
+  col = mix(col, base*1.5 + .02, smoothstep(.60,.80,m2)*.22*clean);
+  col = mix(col, base*.55, smoothstep(.58,.30,m2)*.25*clean);
+  float scuff = smoothstep(.72,.86,vnoise(p*26.+1.))*smoothstep(.40,.60,fbm(p*3.+2.));
+  col = mix(col, col*1.35 + .02, scuff*.30*clean);
+  float dry = smoothstep(.50,.72,fbm(p*4.5+9.));
+  col = mix(col, mix(col, vec3(dot(col,vec3(.33))), .35)*1.22 + .012, dry*.38*clean);
+  col *= mix(.45, 1., smoothstep(0., .035, s.d));
+  col *= mix(.80, 1., smoothstep(.0, .16, s.d));
+  gOcc = mix(.12, 1., smoothstep(.002, .026, s.d));
+  if(s.pid==99.) col *= id==8 ? .92 : 1.12;
+  vec3 lc = id>=2 ? sc(.90,.87,.78) : sc(.74,.60,.42);
+  col = mix(col, col*.35, exp(-sq(s.slit/.009)));
+  col = mix(col, lc*(.82+.3*m2), S(.016 - s.lace));
+  m.col = col; m.rough = (id>=5 ? .52 : .62) + .12*dry; m.coat = id>=5 ? .42 : .30; m.metal = 0.;
+}
+
+vec3 triadCol(int id, Ico k, vec3 p, vec3 base){
+  float R = id<=12 ? .497 : .462;
+  float s1 = sacos(k.a1)-R, s2 = sacos(k.a2)-R, s3 = sacos(k.a3)-R;
+  float m = S(s1)*S(k.d-.028);
+  vec3 blk = sc(.05,.05,.055);
+  vec3 hc = normalize(k.v1+k.v2+k.v3), tip = normalize(k.v1+k.v2);
+  if(id<=12){
+    return mix(base, blk, m*(1.-band(s1,.036,.050)));
+  }
+  if(id==13){                                 // Azteca
+    float l1 = band(s1,.024,.034);
+    float fret = band(s1,.046,.082)*step(.5, fract(s2*24.+.25));
+    float l2 = band(s1,.094,.104);
+    float core = S(s1-.125);
+    float ink = m*(1.-max(max(l1,fret),l2));
+    ink = mix(ink, 0., core*(1.-S(.035-sacos(dot(p,hc)))));
+    return mix(base, blk, ink);
+  }
+  // medallion frame at the three tips
+  vec3 mc = normalize(mix(hc, tip, .50));
+  vec3 e1 = normalize(tip - mc*dot(tip,mc)), e2 = cross(mc,e1);
+  vec2 q = vec2(dot(p,e1), dot(p,e2)); float rr = length(q), th = atan(q.y,q.x);
+  if(id==14){                                 // Etrusco Unico
+    vec3 col = mix(base, blk, m*(1.-band(s1,.026,.036))*(1.-.75*band(s1,.07,.2)*step(.55,fract(s2*30.))));
+    float mane = .060 + .010*cos(th*10.);
+    col = mix(col, blk, S(mane-rr));
+    col = mix(col, base, band(rr,.030,.039)*step(.3,fract(th*10./PI)));
+    col = mix(col, base, S(.008-length(q-vec2(.006,.012))) + S(.008-length(q-vec2(.006,-.012))));
+    return col;
+  }
+  if(id==15){                                 // Questra
+    float neb = fbm(p*8.);
+    vec3 tc = mix(blk, sc(.52,.54,.58), smoothstep(.42,.78,neb)*smoothstep(0.,.10,s1));
+    vec3 g = floor(p*34.); vec3 f = fract(p*34.)-.5;
+    float star = step(.90, hash(g))*smoothstep(.20,.08,length(f));
+    tc = mix(tc, vec3(1.), star);
+    tc = mix(tc, vec3(1.), band(s1,.018,.026));
+    vec3 col = mix(base, tc, m);
+    col = mix(col, sc(.90,.90,.92), S(.034-rr)*m);
+    col = mix(col, blk, band(rr,.018,.024)*m);
+    col = mix(col, vec3(1.), band(length(q*vec2(1.,2.6)),.052,.060)*m);
+    return col;
+  }
+  // Tricolore
+  vec3 blue = sc(.05,.16,.52), red = sc(.86,.10,.14);
+  vec3 tc = blue;
+  tc = mix(tc, sc(.20,.42,.80), band(s1,.060,.20)*step(.6, fract(s2*26.)));
+  tc = mix(tc, red, band(s1,.022,.040));
+  tc = mix(tc, vec3(.95), band(s1,.040,.048));
+  tc = mix(tc, red, S(.030-rr));
+  tc = mix(tc, vec3(.95), band(rr,.030,.038));
+  return mix(base, tc, m);
+}
+vec3 feverCol(vec3 p, vec3 base){
+  float b1, b2; vec3 t = tetraNear(p, b1, b2); vec2 pl = polar3(p, t);
+  float r = pl.x;
+  float sec = mod(pl.y - 1.15*r + .5 + PI/3., 2.*PI/3.) - PI/3.;
+  float g = sec/(2.*PI/3.) + .5;
+  float tri = r*cos(sec);
+  const float R0 = .40;
+  vec3 gold = sc(.80,.62,.22), dark = sc(.20,.21,.17), red = sc(.80,.09,.09);
+  vec3 col = base;
+  float fw = .11*pow(clamp(1.-g*1.2, 0., 1.), 1.3);
+  col = mix(col, mix(red, sc(.96,.45,.08), smoothstep(0.,.10,tri-R0)), band(tri, R0, R0+fw+.012)*step(.006,fw));
+  col = mix(col, gold*(.80+.35*g), band(tri, R0-.085, R0));
+  col = mix(col, dark, band(tri, R0-.097, R0-.085));
+  float sec2 = mod(pl.y + .5 + PI/3., 2.*PI/3.) - PI/3.;
+  float tri2 = r*cos(sec2);
+  col = mix(col, dark, S(.15-tri2));
+  col = mix(col, gold, band(tri2, .050, .064));
+  return col;
+}
+void Ctico(int id, vec3 p, inout M m){
+  Ico k = ico(p);
+  vec3 white = id==17 ? sc(.93,.91,.84) : (id<=10 ? sc(.93,.92,.89) : sc(.95,.95,.94));
+  vec3 col = white;
+  if(id<=10) col = mix(white, sc(.055,.055,.06), k.pent);
+  else if(id<=16) col = triadCol(id, k, p, white);
+  else col = feverCol(p, white);
+  col *= .96 + .08*fbm(p*5.);
+  col *= mix(.55, 1., smoothstep(0., .014, k.d));
+  gOcc = mix(.2, 1., smoothstep(.002, .022, k.d));
+  m.col = col; m.metal = 0.;
+  m.rough = id==9 ? .50 : id==10 ? .38 : .30;
+  m.coat = id==9 ? .25 : id==10 ? .75 : .90;
+}
+
+void Cteam(vec3 p, inout M m){
+  vec3 fb; float s = teamSD(p, fb);
+  vec3 col = sc(.96,.96,.95);
+  if(s<0.){
+    vec3 g = vec3(fb.x, abs(fb.y), fb.z);
+    float rho = sacos(dot(g, vec3(cos(TG_C),sin(TG_C),0.)));
+    float ang = atan(g.z, dot(g, vec3(-sin(TG_C),cos(TG_C),0.)));
+    float tap = pow(.5+.5*cos(ang), .6);
+    float bw = .060*tap, rc = TG_R-.115;
+    float on = smoothstep(.02,.10,tap);
+    vec3 gold = sc(.80,.63,.25);
+    col = mix(col, gold, band(abs(rho-rc), bw+.012, bw+.019)*on);
+    col = mix(col, sc(.05,.05,.055), S(bw-abs(rho-rc))*on);
+    col = mix(col, gold, band(rho, rc-bw-.052, rc-bw-.046)*smoothstep(.25,.6,tap));
+  }
+  col *= mix(.6, 1., smoothstep(0., .012, abs(s)));
+  m.col = col; m.rough = .26; m.coat = 1.; m.metal = 0.;
+}
+
+void Cjab(vec3 p, inout M m){
+  float b1, b2; vec3 t = tetraNear(p, b1, b2);
+  vec2 pl = polar3(p, t);
+  float cw = cos(3.*pl.y + PI);
+  float f = pl.x*(1.+.16*cw);
+  const float R = .46;
+  vec3 col = sc(.96,.96,.95);
+  float corner = smoothstep(.1,-.8,cw);
+  float e = R-f;
+  if(e>0. && e<.20){
+    float idx = floor(e*56.);
+    float on = step(fract(e*56.), .62)*step(1.5, idx)*smoothstep(.0,.5,corner + .25 - idx*.03);
+    vec3 pc = idx<3. ? sc(.86,.12,.12) : idx<4. ? sc(.98,.55,.08) : idx<5. ? sc(.98,.82,.12) : idx<6. ? sc(.20,.62,.28)
+            : idx<7. ? sc(.10,.35,.75) : idx<8. ? sc(.45,.20,.55) : sc(.08,.08,.09);
+    col = mix(col, pc, on);
+  }
+  float bw = .040 + .036*(1.-corner);
+  col = mix(col, sc(.06,.06,.07), band(f, R-bw*.0, R+bw));
+  col = mix(col, sc(.80,.63,.25), band(f, R+bw+.010, R+bw+.016));
+  col *= mix(.6, 1., smoothstep(0., .012, jabSeam(p)));
+  m.col = col; m.rough = .34; m.coat = .85; m.metal = 0.;
+}
+
+void Cbraz(vec3 p, inout M m){
+  CW w = cubeWave(p, .40, 0.);
+  vec3 col = sc(.96,.96,.95);
+  float on = smoothstep(-.75,-.25,w.arm);
+  float wd = .045 + .125*smoothstep(-.4,.7,w.arm);
+  const float d0 = .026;
+  float g = clamp(abs(w.along)/.577, 0., 1.);
+  vec3 c1, c2;
+  if(w.ax<.5){ c1 = sc(.99,.62,.05); c2 = sc(.90,.20,.10); }
+  else if(w.ax<1.5){ c1 = sc(.62,.84,.12); c2 = sc(.05,.55,.25); }
+  else { c1 = sc(.10,.70,.92); c2 = sc(.05,.22,.70); }
+  vec3 rc = mix(c1, c2, smoothstep(.15,.85,g));
+  vec2 sv = vec2(w.d*44., w.along*34.);
+  rc = mix(rc, rc*1.4+.05, smoothstep(.26,.16,length(fract(sv)-.5))*.55);
+  col = mix(col, rc, band(w.d, d0, d0+wd)*on);
+  vec3 navy = sc(.04,.07,.26);
+  col = mix(col, navy, max(band(w.d, d0-.004, d0+.007), band(w.d, d0+wd-.006, d0+wd+.005))*on);
+  col *= mix(.55, 1., smoothstep(0., .014, w.d));
+  m.col = col; m.rough = .36; m.coat = .8; m.metal = 0.;
+}
+
+void Ct18(vec3 p, inout M m){
+  CW w = cubeWave(p, .24, .07);
+  vec3 col = sc(.96,.96,.95);
+  vec2 g = floor(w.uv*13.); vec2 gc = (g+.5)/13.;
+  float ga = (gc.x+gc.y)*.7071, gb = (gc.x-gc.y)*.7071;
+  float F = 1.-max(abs(ga)/.92, abs(gb)/.36);
+  float lvl = clamp(F*2.3 + (hash(vec3(g,3.))-.5)*1.15, 0., 1.);
+  float tone = floor(lvl*4.+.001)/4.;
+  vec2 cf = abs(fract(w.uv*13.)-.5);
+  float gap = smoothstep(.5,.46,max(cf.x,cf.y));
+  vec3 pc = mix(sc(.70,.71,.73), sc(.055,.055,.065), smoothstep(.25,1.,tone));
+  col = mix(col, pc, step(.2,tone)*gap);
+  col *= mix(.6, 1., smoothstep(0., .012, w.d));
+  m.col = col; m.rough = .34; m.coat = .8; m.metal = 0.;
+}
+
+void Crihla(vec3 p, inout M m){
+  RH r = rihla(p);
+  vec3 col = sc(.95,.95,.96) + .035*cos(vec3(0.,2.1,4.2) + gNV*7. + p.y*3.);
+  if(r.tri>.5){
+    vec2 pl = polar3(p, r.c);
+    float sec = mod(pl.y + 1.0*pl.x + PI/3., 2.*PI/3.) - PI/3.;
+    float g = sec/(2.*PI/3.) + .5;
+    float tri = pl.x*cos(sec);
+    vec3 fill = mix(sc(.04,.08,.38), mix(sc(.06,.34,.82), sc(.22,.80,.86), smoothstep(.45,1.,g)), smoothstep(0.,.55,g));
+    col = mix(col, fill, S(.255-tri));
+    float st = band(tri, .262, .262+.045*sin(g*PI))*smoothstep(.05,.3,g);
+    col = mix(col, mix(sc(.86,.10,.20), sc(1.,.76,.10), smoothstep(.2,.9,g)), st);
+  }
+  col *= mix(.6, 1., smoothstep(0., .012, r.d));
+  m.col = col; m.rough = .32; m.coat = .8; m.metal = 0.;
+}
+
+void Ctri(vec3 p, inout M m){
+  TW w = tri4(p);
+  vec3 col = sc(.96,.96,.95);
+  float arm = smoothstep(-.15,.75,w.arm);
+  float wd = .30*arm;
+  vec3 cc = w.ci==1 ? sc(.86,.10,.16) : (w.ci==2 ? sc(.02,.58,.34) : sc(.08,.22,.78));
+  float on = S(wd-w.d)*step(.012,wd);
+  float gr = smoothstep(0., max(wd,.01), w.d);
+  vec3 bc = cc*(.72+.45*gr);
+  bc = mix(bc, bc*1.3+.03, .22*(.5+.5*sin(w.d*200.)));
+  // host icons riding each wave
+  float sg = w.along<0. ? -1. : 1.;
+  vec2 iq = vec2((abs(w.along)-.40)*sg/.075, (w.d-.135)/.075)*.5 + .5;
+  float ic = atlas(vec2(iq.x, 1.-iq.y), 24. + float(w.ci-1), .075);
+  bc = mix(bc, mix(sc(.95,.80,.42), vec3(1.), .25), ic*.9);
+  col = mix(col, bc, on);
+  col = mix(col, sc(.80,.64,.28), band(w.d, wd+.008, wd+.016)*step(.03,wd));
+  col *= mix(.55, 1., smoothstep(0., .014, w.d));
+  m.col = col; m.rough = .34; m.coat = .85; m.metal = 0.;
+}
+
+M evalBall(int id, int slot, vec3 p, vec3 t1, vec3 t2, float bumpK){
+  const float e = .0022;
+  float h0 = H(id,p), h1 = H(id,normalize(p+e*t1)), h2 = H(id,normalize(p+e*t2));
+  M m; gOcc = 1.;
+  m.n = normalize(p - bumpK*(((h1-h0)/e)*t1 + ((h2-h0)/e)*t2));
+  if(id<=8) Cleather(id,p,m);
+  else if(id<=17) Ctico(id,p,m);
+  else if(id==18) Cteam(p,m);
+  else if(id==19) Cjab(p,m);
+  else if(id==20) Cbraz(p,m);
+  else if(id==21) Ct18(p,m);
+  else if(id==22) Crihla(p,m);
+  else Ctri(p,m);
+  m.occ = gOcc;
+  m.coat = id<=4 ? .22 : (id<=8 ? .34 : (id==9 ? .90 : 1.));
+  m.cr = id<=4 ? .46 : (id<=8 ? .38 : (id==9 ? .17 : (id==10 ? .11 : .085)));
+  float dk = decal(p, uDc[slot], uDu[slot], uDp[slot].x, uDp[slot].y)*uDp[slot].z;
+  m.col = mix(m.col, pow(uInk[slot], vec3(2.2)), dk);
+  m.metal = mix(m.metal, uDp[slot].w, dk);
+  m.rough = mix(m.rough, mix(m.rough, .22, uDp[slot].w), dk);
+  m.coat *= 1.-.6*dk*uDp[slot].w;
+  return m;
+}
+
+/* -------------------------------------------------------------- lighting */
+// Photo studio: dark room behind the camera, white cyclorama behind the ball, four softboxes.
+const vec3 L1 = vec3(-.5494, .6193, .5609);
+float sbox(vec3 R, vec3 L, vec2 hs, float e){
+  float z = dot(R,L); if(z<.05) return 0.;
+  vec3 U = normalize(cross(vec3(0.,1.,0.), L)), V = cross(L,U);
+  vec2 q = vec2(dot(R,U), dot(R,V))/z;
+  vec2 d = smoothstep(hs+e, hs-e, abs(q));
+  return d.x*d.y*(hs.x*hs.y)/((hs.x+e*.6)*(hs.y+e*.6));
+}
+vec3 env(vec3 R, float rough){
+  float r2 = rough*rough, e = .028 + r2*2.4;
+  vec3 c = mix(vec3(.09,.09,.11), vec3(.86,.88,.94), smoothstep(.45,-.80,R.z));
+  c = mix(c, vec3(.26,.26,.29), smoothstep(.45,1.,R.y)*.7);
+  c = mix(c, vec3(.74,.73,.79), smoothstep(.08,-.40,R.y));
+  c = mix(c, vec3(.16,.14,.20), smoothstep(-.70,-1.,R.y));
+  c = mix(c, vec3(.40,.40,.44), clamp(r2*2.2,0.,1.));
+  c += sbox(R, L1, vec2(.44,.30), e)*vec3(1.,.985,.96)*15.;
+  c += sbox(R, normalize(vec3(.93,.20,-.31)), vec2(.10,.60), e)*vec3(.95,.97,1.)*9.;
+  c += sbox(R, normalize(vec3(.05,1.,.12)), vec2(.75,.45), e)*3.2;
+  c += sbox(R, normalize(vec3(-.82,.08,-.56)), vec2(.07,.50), e)*vec3(1.,.97,.94)*5.;
+  return c;
+}
+vec3 irr(vec3 n){
+  vec3 a = mix(vec3(.46,.44,.52), vec3(.78,.81,.88), .5+.5*n.y);
+  float k = max(dot(n,L1)*.62+.38, 0.); k *= k;
+  return a*.50 + vec3(1.,.975,.94)*k*.80;
+}
+float floorShade(vec3 q){
+  float l2 = dot(q,q); float ao = 1./(l2*sqrt(l2));
+  vec2 so = q.xz - vec2(.50,-.40);
+  return clamp(.74*pow(ao,.75) + .20*exp(-dot(so,so)/1.5) + .30*exp(-dot(q.xz,q.xz)/.10), 0., .95);
+}
+vec3 envP(vec3 pos, vec3 R, float rough){
+  vec3 c = env(R, rough);
+  if(R.y<-.02){
+    vec3 q = pos + R*((-1.-pos.y)/R.y);
+    c *= 1. - .85*floorShade(q)*smoothstep(.0,-.30,R.y)*exp(-dot(q.xz,q.xz)*.03);
+  }
+  return c;
+}
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14), 0., 1.); }
+
+// rgb = shaded ball (display-linear), a = coverage
+vec4 ball(vec3 ro, vec3 rd, float pxAng, float distAdd){
+  float b = dot(ro,rd), c = dot(ro,ro)-1.;
+  if(b>0.) return vec4(0.);
+  float edge = (1.-sqrt(max(dot(ro,ro)-b*b, 0.)))/(pxAng*(distAdd-b));
+  float cov = clamp(edge+.5, 0., 1.);
+  if(cov<=0.) return vec4(0.);
+  float t = -b - sqrt(max(b*b-c, 0.));
+  vec3 N = normalize(ro+rd*t);
+  float NV = max(dot(N,-rd), 0.);
+  gNV = NV;
+  gPx = pxAng*(t+distAdd)*.75/max(NV,.22);
+  gMicro = smoothstep(.012,.004,gPx);
+  vec3 p = transpose(uRot)*N;
+  vec3 t1 = normalize(cross(p, abs(p.y)<.9 ? vec3(0.,1.,0.) : vec3(1.,0.,0.))), t2 = cross(p,t1);
+  float bumpK = smoothstep(0.,.30,NV);
+  M m = evalBall(uA, 0, p, t1, t2, bumpK);
+  if(uMix>.001){
+    M mb = evalBall(uB, 1, p, t1, t2, bumpK);
+    m.col = mix(m.col, mb.col, uMix); m.n = normalize(mix(m.n, mb.n, uMix));
+    m.rough = mix(m.rough, mb.rough, uMix); m.coat = mix(m.coat, mb.coat, uMix); m.metal = mix(m.metal, mb.metal, uMix);
+    m.occ = mix(m.occ, mb.occ, uMix); m.cr = mix(m.cr, mb.cr, uMix);
+  }
+  vec3 Nw = uRot*m.n;
+  float nv = max(dot(Nw,-rd), 0.);
+  float ao = mix(.42, 1., smoothstep(-1.,-.05,Nw.y));
+  float fr = pow(1.-nv, 5.);
+  vec3 F0 = mix(vec3(.04), m.col, m.metal);
+  vec3 F = F0 + (max(vec3(1.-m.rough), F0) - F0)*fr*.6;
+  vec3 sh = m.col*(1.-m.metal)*irr(Nw)*ao*(1.-F) + envP(N, reflect(rd,Nw), m.rough)*F*mix(1.,ao,.5)*m.occ;
+  // lacquer / polish layer: sharper reflections, slightly smoothed normal, smudged roughness
+  vec3 Nc = normalize(mix(N, Nw, .45*smoothstep(.05,.45,NV)));
+  float cr = m.cr*(.75 + .6*fbm(p*5.+11.));
+  float Fc = (.04 + .50*pow(1.-NV, 5.))*m.coat*mix(.3,1.,m.occ);
+  sh = sh*(1.-Fc) + envP(N, reflect(rd,Nc), cr)*Fc;
+  sh *= 1. - .14*pow(1.-NV, 3.);
+  return vec4(aces(sh*1.08), cov);
+}
+
+vec3 background(vec2 uv, vec3 ro, vec3 rd, float pxAng){
+  float y = uv.y+.5;
+  vec3 top = mix(vec3(.915,.905,.972), vec3(.885,.940,.985), smoothstep(-.45,.5,uv.x));
+  vec3 bg = mix(vec3(.985,.985,.993), top, smoothstep(.26,1.05,y));
+  bg = pow(bg, vec3(2.2));
+  if(rd.y<0.){
+    float tf = (-1.-ro.y)/rd.y; vec3 q = ro+rd*tf;
+    // glossy studio floor: faint mirror image that dies off with height, then the ball's shadow over it
+    vec3 r = vec3(rd.x, -rd.y, rd.z);
+    vec4 bl = ball(q, r, pxAng, tf);
+    float tr = max(-dot(q,r) - sqrt(max(sq(dot(q,r))-dot(q,q)+1., 0.)), 0.);
+    bg = mix(bg, bl.rgb, bl.a*.30*exp(-tr*1.5));
+    bg = mix(bg, bg*vec3(.25,.22,.35), floorShade(q));
+  }
+  return bg;
+}
+
+void main(){
+  vec2 fc = gl_FragCoord.xy - uOff;
+  vec2 uv = (fc - .5*uRes)/uRes.y;
+  vec3 ro = vec3(0., .70, 7.4), ta = vec3(0., -.13, 0.);
+  vec3 ww = normalize(ta-ro), uu = normalize(cross(ww, vec3(0.,1.,0.))), vv = cross(uu,ww);
+  float foc = 2.5*uZoom;
+  vec3 rd = normalize(uv.x*uu + uv.y*vv + foc*ww);
+  float pxAng = 1./(uRes.y*foc);
+  vec3 col = background(uv, ro, rd, pxAng);
+  vec4 bl = ball(ro, rd, pxAng, 0.);
+  col = mix(col, bl.rgb, bl.a);
+  col = pow(max(col,0.), vec3(1./2.2));
+  col += (hash(vec3(gl_FragCoord.xy, 1.))-.5)/255.;
+  outColor = vec4(col, 1.);
+}`;
+
+/* ------------------------------------------------------------- quaternion */
+const qmul = (a, b) => [
+  a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1],
+  a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0],
+  a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3],
+  a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2]];
+const qnorm = q => { const l = Math.hypot(...q) || 1; return q.map(v => v/l); };
+const qaxis = (ax, ang) => { const s = Math.sin(ang/2); return [ax[0]*s, ax[1]*s, ax[2]*s, Math.cos(ang/2)]; };
+const vnorm = v => { const l = Math.hypot(...v) || 1; return v.map(x => x/l); };
+const vcross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const vdot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const qrot = (q, v) => { const r = qmul(qmul(q, [v[0], v[1], v[2], 0]), [-q[0], -q[1], -q[2], q[3]]); return [r[0], r[1], r[2]]; };
+function qfromto(a, b) {
+  const d = vdot(a, b);
+  if (d < -0.9999) return qaxis(vnorm(vcross(a, Math.abs(a[0]) < .9 ? [1, 0, 0] : [0, 1, 0])), Math.PI);
+  const c = vcross(a, b);
+  return qnorm([c[0], c[1], c[2], 1 + d]);
+}
+function qslerp(a, b, t) {
+  let d = a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3];
+  if (d < 0) { b = b.map(v => -v); d = -d; }
+  if (d > .9995) return qnorm(a.map((v, i) => v + (b[i]-v)*t));
+  const th = Math.acos(d), s = Math.sin(th), wa = Math.sin((1-t)*th)/s, wb = Math.sin(t*th)/s;
+  return a.map((v, i) => v*wa + b[i]*wb);
+}
+function qmat(q) {                                    // column-major mat3, ball -> world
+  const [x, y, z, w] = q;
+  return [1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w),
+          2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w),
+          2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y)];
+}
+// orientation that brings ball-space direction `dir` to face the camera with `up` upright
+function heroQuat(dir, up) {
+  const target = vnorm([.16, -.10, .98]);
+  const q1 = qfromto(vnorm(dir), target);
+  const u = qrot(q1, vnorm(up));
+  const proj = v => vnorm(v.map((x, i) => x - target[i]*vdot(v, target)));
+  const a = proj(u), b = proj([.12, 1, 0]);
+  const ang = Math.atan2(vdot(vcross(a, b), target), vdot(a, b));
+  return qnorm(qmul(qaxis(target, ang), q1));
+}
+
+/* ------------------------------------------------------------------ setup */
+const params = new URLSearchParams(location.search);
+let embedded = true;
+try { embedded = window.self !== window.top; } catch (e) {}
+if (!embedded) {
+  const fitWindow = () => document.documentElement.style.setProperty('--vh', innerHeight + 'px');
+  document.documentElement.classList.add('standalone');
+  fitWindow(); addEventListener('resize', fitWindow);
+}
+const GRID = params.has('grid');
+if (GRID) document.body.classList.add('grid');
+const canvas = document.getElementById('gl');
+const card = canvas.parentElement;
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
+
+function fail(msg) {
+  const pre = document.createElement('pre');
+  pre.className = 'err'; pre.textContent = msg;
+  card.appendChild(pre);
+}
+
+function buildAtlas() {
+  const cw = 512, ch = 256, cv = document.createElement('canvas');
+  cv.width = cw*4; cv.height = ch*7;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const sans = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+  const spaced = s => s.toUpperCase().split('').join(' ');
+  const fit = (text, font, maxW, y) => {
+    ctx.font = font;
+    const w = ctx.measureText(text).width, k = Math.min(1, maxW/w);
+    ctx.save(); ctx.translate(0, y); ctx.scale(k, k); ctx.fillText(text, 0, 0); ctx.restore();
+    return w*k;
+  };
+  BALLS.forEach((b, i) => {
+    ctx.save();
+    ctx.translate((i % 4)*cw + cw/2, Math.floor(i/4)*ch + ch/2);
+    const main = b.style === 'stamp' ? 'italic 700 86px Georgia, "Times New Roman", serif'
+               : b.style === 'retro' ? 'italic 800 84px ' + sans : '800 78px ' + sans;
+    const text = b.style === 'modern' ? b.name.toUpperCase() : b.name;
+    fit(spaced('World Cup'), '600 22px ' + sans, 380, -74);
+    const w = fit(text, main, 420, -8);
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-w/2, 40); ctx.lineTo(w/2, 40); ctx.stroke();
+    fit(spaced(b.host.split(' / ')[0] + ' ' + b.y), '600 24px ' + sans, 400, 72);
+    ctx.restore();
+  });
+  ['★', '\u{1F985}', '\u{1F341}'].forEach((g, k) => {     // ci 1 red -> leaf, 2 green -> eagle, 3 blue -> star
+    const order = [2, 1, 0][k];                                   // cell 24 = red, 25 = green, 26 = blue
+    const i = 24 + order;
+    ctx.save();
+    ctx.translate((i % 4)*cw + cw/2, Math.floor(i/4)*ch + ch/2);
+    ctx.font = '190px ' + (k === 0 ? 'Georgia, serif' : '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif');
+    ctx.fillText(g, 0, 8);
+    ctx.restore();
+  });
+  return cv;
+}
+
+let prog, U = {};
+function initGL() {
+  const mk = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  prog = gl.createProgram();
+  gl.attachShader(prog, mk(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'aPos');
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  for (const n of ['uRes', 'uOff', 'uRot', 'uZoom', 'uMix', 'uA', 'uB', 'uAtlas', 'uDc', 'uDu', 'uInk', 'uDp'])
+    U[n] = gl.getUniformLocation(prog, n.startsWith('uD') || n === 'uInk' ? n + '[0]' : n);
+  const tex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, buildAtlas());
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.uniform1i(U.uAtlas, 0);
+}
+
+function setBalls(a, b, mix) {
+  const A = BALLS[a], B = BALLS[b];
+  gl.uniform1i(U.uA, a); gl.uniform1i(U.uB, b); gl.uniform1f(U.uMix, mix);
+  gl.uniform3fv(U.uDc, [...vnorm(A.dc), ...vnorm(B.dc)]);
+  gl.uniform3fv(U.uDu, [...A.du, ...B.du]);
+  gl.uniform3fv(U.uInk, [...A.ink, ...B.ink]);
+  gl.uniform4fv(U.uDp, [A.ds, a, A.op, A.metal || 0, B.ds, b, B.op, B.metal || 0]);
+}
+
+/* ------------------------------------------------------------------ state */
+const N = BALLS.length;
+const heroOf = i => heroQuat(BALLS[i].hero, BALLS[i].du);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const range = document.getElementById('year');
+const elName = document.getElementById('name'), elWhere = document.getElementById('where'), elFact = document.getElementById('fact');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let v = clamp(parseFloat(params.get('b') ?? '9'), 0, N-1);
+let vTarget = null, shown = -1;
+let q = heroOf(Math.round(v)), qFrom = null, qTo = null, qT = 1;
+let zoom = parseFloat(params.get('z') ?? '1'), zoomTarget = zoom;
+let vel = [0, 0], dragging = false, lastInput = -1e9, dirty = true;
+if (params.has('ry')) q = qmul(qaxis([0, 1, 0], parseFloat(params.get('ry'))), q);
+if (params.has('rx')) q = qmul(qaxis([1, 0, 0], parseFloat(params.get('rx'))), q);
+
+function label() {
+  const i = Math.round(v);
+  if (i === shown) return;
+  const first = shown < 0;
+  shown = i;
+  const b = BALLS[i];
+  elName.textContent = b.name;
+  elWhere.textContent = b.host + ' ' + b.y;
+  elFact.textContent = b.fact;
+  range.setAttribute('aria-valuetext', `${b.y} ${b.host}: ${b.name}`);
+  if (!first) { qFrom = q; qTo = heroOf(i); qT = 0; vel = [0, 0]; }
+}
+
+function resize() {
+  const dpr = GRID ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(2, Math.round(canvas.clientWidth*dpr)), h = Math.max(2, Math.round(canvas.clientHeight*dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; dirty = true; }
+}
+
+function draw() {
+  if (GRID) {
+    const cols = 6, rows = 4, tw = Math.floor(canvas.width/cols), th = Math.floor(canvas.height/rows);
+    gl.enable(gl.SCISSOR_TEST);
+    for (let i = 0; i < N; i++) {
+      const x = (i % cols)*tw, y = canvas.height - (Math.floor(i/cols)+1)*th;
+      gl.viewport(x, y, tw, th); gl.scissor(x, y, tw, th);
+      let qq = heroOf(i);
+      if (params.has('ry')) qq = qmul(qaxis([0, 1, 0], parseFloat(params.get('ry'))), qq);
+      if (params.has('rx')) qq = qmul(qaxis([1, 0, 0], parseFloat(params.get('rx'))), qq);
+      gl.uniform2f(U.uRes, tw, th); gl.uniform2f(U.uOff, x, y);
+      gl.uniformMatrix3fv(U.uRot, false, qmat(qq)); gl.uniform1f(U.uZoom, zoom);
+      setBalls(i, i, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    return;
+  }
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform2f(U.uRes, canvas.width, canvas.height); gl.uniform2f(U.uOff, 0, 0);
+  gl.uniformMatrix3fv(U.uRot, false, qmat(q)); gl.uniform1f(U.uZoom, zoom);
+  const a = clamp(Math.floor(v), 0, N-1), b = Math.min(a+1, N-1), f = v - a;
+  const t = clamp((f - .25)/.5, 0, 1);
+  setBalls(a, b, t*t*(3 - 2*t));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last)/1000); last = now;
+  resize();
+  if (vTarget !== null) {
+    v += (vTarget - v)*(1 - Math.exp(-dt*11));
+    if (Math.abs(vTarget - v) < .002) { v = vTarget; vTarget = null; }
+    range.value = v; label(); dirty = true;
+  }
+  if (qT < 1) {
+    qT = Math.min(1, qT + dt/.85);
+    const e = 1 - Math.pow(1 - qT, 3);
+    q = qslerp(qFrom, qTo, e); dirty = true;
+  } else if (!dragging) {
+    const sp = Math.hypot(vel[0], vel[1]);
+    if (sp > .02) {
+      q = qnorm(qmul(qaxis([0, 1, 0], vel[0]*dt), qmul(qaxis([1, 0, 0], vel[1]*dt), q)));
+      const k = Math.exp(-dt*2.6); vel = [vel[0]*k, vel[1]*k]; dirty = true;
+    } else if (!reduced && !GRID && !params.has('still') && now - lastInput > 2600) {
+      q = qnorm(qmul(qaxis([0, 1, 0], .16*dt), q)); dirty = true;
+    }
+  }
+  if (Math.abs(zoomTarget - zoom) > .0005) { zoom += (zoomTarget - zoom)*(1 - Math.exp(-dt*12)); dirty = true; }
+  if (dirty) { draw(); dirty = false; }
+  requestAnimationFrame(frame);
+}
+
+/* ------------------------------------------------------------ interaction */
+function snapTo(i) { vTarget = clamp(i, 0, N-1); lastInput = performance.now(); }
+range.addEventListener('input', () => { v = parseFloat(range.value); vTarget = null; lastInput = performance.now(); label(); dirty = true; });
+range.addEventListener('change', () => snapTo(Math.round(parseFloat(range.value))));
+range.addEventListener('keydown', e => {
+  const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -4, PageUp: 4 }[e.key];
+  if (step) { e.preventDefault(); snapTo(Math.round(vTarget ?? v) + step); }
+  else if (e.key === 'Home') { e.preventDefault(); snapTo(0); }
+  else if (e.key === 'End') { e.preventDefault(); snapTo(N-1); }
+});
+
+let px = 0, py = 0, pt = 0;
+canvas.addEventListener('pointerdown', e => {
+  dragging = true; qT = 1; vel = [0, 0]; px = e.clientX; py = e.clientY; pt = performance.now();
+  canvas.setPointerCapture(e.pointerId); canvas.classList.add('dragging'); lastInput = pt;
+});
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const now = performance.now(), k = 1/(.343*zoom*canvas.clientHeight);
+  const dx = (e.clientX - px)*k, dy = (e.clientY - py)*k, dt = Math.max(.004, (now - pt)/1000);
+  q = qnorm(qmul(qaxis([0, 1, 0], dx), qmul(qaxis([1, 0, 0], dy), q)));
+  vel = [vel[0]*.5 + dx/dt*.5, vel[1]*.5 + dy/dt*.5];
+  px = e.clientX; py = e.clientY; pt = now; lastInput = now; dirty = true;
+});
+const endDrag = () => {
+  if (!dragging) return;
+  dragging = false; canvas.classList.remove('dragging');
+  if (performance.now() - pt > 90 || reduced) vel = [0, 0];
+  lastInput = performance.now();
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomTarget = clamp(zoomTarget*Math.exp(-e.deltaY*.0015), .55, 1.9); lastInput = performance.now();
+}, { passive: false });
+canvas.addEventListener('keydown', e => {
+  const r = { ArrowLeft: [-.15, 0], ArrowRight: [.15, 0], ArrowUp: [0, -.15], ArrowDown: [0, .15] }[e.key];
+  if (r) { e.preventDefault(); qT = 1; q = qnorm(qmul(qaxis([0, 1, 0], r[0]), qmul(qaxis([1, 0, 0], r[1]), q))); lastInput = performance.now(); dirty = true; }
+  if (e.key === '+' || e.key === '=') zoomTarget = clamp(zoomTarget*1.2, .55, 1.9);
+  if (e.key === '-') zoomTarget = clamp(zoomTarget/1.2, .55, 1.9);
+});
+document.getElementById('zin').addEventListener('click', () => { zoomTarget = clamp(zoomTarget*1.25, .55, 1.9); });
+document.getElementById('zout').addEventListener('click', () => { zoomTarget = clamp(zoomTarget/1.25, .55, 1.9); });
+
+// place the middle tick under its real stop
+document.getElementById('midtick').style.left = `calc(15px + (100% - 30px) * ${11/(N-1)})`;
+
+if (!gl) {
+  fail('This needs WebGL 2, which this browser does not provide.');
+} else {
+  try {
+    initGL();
+    range.value = v; label();
+    new ResizeObserver(() => { dirty = true; }).observe(canvas);
+    requestAnimationFrame(frame);
+  } catch (err) {
+    fail('Shader failed to compile:\n\n' + err.message);
+  }
+}
+</script>
+</body>
+</html>
